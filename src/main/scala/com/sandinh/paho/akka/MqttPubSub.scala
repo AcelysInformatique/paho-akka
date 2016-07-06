@@ -118,7 +118,7 @@ class MqttPubSub(cfg: PSConfig) extends FSM[PSState, Unit] {
     case Event(sub: Subscribe, _) =>
       context.child(urlEnc(sub.topic)) match {
         case Some(t) => t ! sub //Topic t will (only) store & watch sub.ref
-        case None => doSubscribe(sub)
+        case None    => doSubscribe(sub)
       }
       stay()
 
