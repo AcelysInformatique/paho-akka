@@ -13,6 +13,7 @@ object MqttPubSub {
 
   //++++ ultilities ++++//
   @inline private def urlEnc(s: String) = URLEncoder.encode(s, "utf-8")
+
   @inline private def urlDec(s: String) = URLDecoder.decode(s, "utf-8")
 }
 
@@ -117,7 +118,7 @@ class MqttPubSub(cfg: PSConfig) extends FSM[PSState, Unit] {
     case Event(sub: Subscribe, _) =>
       context.child(urlEnc(sub.topic)) match {
         case Some(t) => t ! sub //Topic t will (only) store & watch sub.ref
-        case None    => doSubscribe(sub)
+        case None => doSubscribe(sub)
       }
       stay()
 
@@ -134,7 +135,26 @@ class MqttPubSub(cfg: PSConfig) extends FSM[PSState, Unit] {
 
   whenUnhandled {
     case Event(msg: Message, _) =>
-      context.child(urlEnc(msg.topic)) foreach (_ ! msg)
+      val topicArr = msg.topic.split("/")
+
+      context.children.filter { c =>
+        val nameArr = urlDec(c.path.name).split("/")
+
+        nameArr.last match {
+          case "#" =>
+            topicArr.zip(nameArr.dropRight(1)).forall {
+              case (t, n) => t == n || n == "+"
+            }
+
+          case _ =>
+
+            topicArr.length == nameArr.length &&
+              topicArr.zip(nameArr).forall {
+                case (t, n) => t == n || n == "+"
+              }
+        }
+      }.foreach(_ ! msg)
+
       stay()
 
     case Event(UnderlyingSubsAck(topic, fail), _) =>
