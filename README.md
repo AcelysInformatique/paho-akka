@@ -1,6 +1,6 @@
 paho-akka
 =========
-[![Build Status](http://ec2-54-152-253-216.compute-1.amazonaws.com:8080/buildStatus/icon?job=paho-akka)](http://ec2-54-152-253-216.compute-1.amazonaws.com:8080/job/paho-akka)
+[![Build Status](https://travis-ci.org/giabao/paho-akka.svg)](https://travis-ci.org/giabao/paho-akka)
 
 ## What?
 This is a Publish Subscribe library for [akka](http://akka.io/) to pub/sub to a MQTT server - ex [mosquitto](http://mosquitto.org/).
