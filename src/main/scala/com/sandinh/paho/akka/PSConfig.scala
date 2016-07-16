@@ -16,7 +16,7 @@ import scala.concurrent.duration._
   * we re-schedule Connect with {{{delay = reconnectDelayMin * 2^connectCount}}}
   * @param reconnectDelayMax max delay to retry connecting
   * @param cleanSession Sets whether the client and server should remember state across restarts and reconnects.
-  * @param will A last will and testament message (and topic, and qos) that will be set on the connection.
+  * @param will A last will and testament message (with topic, and qos) that will be set on the connection.
   */
 case class PSConfig(
     brokerUrl:         String,
