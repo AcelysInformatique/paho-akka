@@ -13,6 +13,7 @@ object MqttPubSub {
 
   //++++ ultilities ++++//
   @inline private def urlEnc(s: String) = URLEncoder.encode(s, "utf-8")
+
   @inline private def urlDec(s: String) = URLDecoder.decode(s, "utf-8")
 }
 
@@ -57,6 +58,7 @@ class MqttPubSub(cfg: PSConfig) extends FSM[PSState, Unit] {
     * subscription has either Success or Failed.
     */
   private[this] val subscribing = mutable.Set.empty[Subscribe]
+  private[this] val unsubscribing = mutable.Set.empty[Unsubscribe]
 
   //reconnect attempt count, reset when connect success
   private[this] var connectCount = 0
@@ -86,6 +88,7 @@ class MqttPubSub(cfg: PSConfig) extends FSM[PSState, Unit] {
       if (cfg.stashTimeToLive.isFinite())
         pubStash.dequeueAll(_._1 + cfg.stashTimeToLive.toNanos < System.nanoTime)
       while (pubStash.nonEmpty) self ! pubStash.dequeue()._2
+      connectedCallback
       goto(ConnectedState)
 
     case Event(x: Publish, _) =>
@@ -97,6 +100,10 @@ class MqttPubSub(cfg: PSConfig) extends FSM[PSState, Unit] {
 
     case Event(x: Subscribe, _) =>
       subStash += x
+      stay()
+
+    case Event(unsub: Unsubscribe, _) =>
+      subStash.dequeueAll(x => x.ref == unsub.ref && x.topic == unsub.topic)
       stay()
   }
 
@@ -121,6 +128,14 @@ class MqttPubSub(cfg: PSConfig) extends FSM[PSState, Unit] {
       }
       stay()
 
+    case Event(unsub: Unsubscribe, _) =>
+      context.child(urlEnc(unsub.topic)) match {
+        case Some(t) => t ! unsub
+        case None    => // do nothing
+      }
+      subscribed.retain(x => x.ref != unsub.ref && x.topic != unsub.topic)
+      stay()
+
     //don't need handle Terminated(topicRef) in state SDisconnected
     case Event(Terminated(topicRef), _) =>
       try {
@@ -134,7 +149,26 @@ class MqttPubSub(cfg: PSConfig) extends FSM[PSState, Unit] {
 
   whenUnhandled {
     case Event(msg: Message, _) =>
-      context.child(urlEnc(msg.topic)) foreach (_ ! msg)
+      val topicArr = msg.topic.split("/")
+
+      context.children.filter { c =>
+        val nameArr = urlDec(c.path.name).split("/")
+
+        nameArr.last match {
+          case "#" =>
+            topicArr.zip(nameArr.dropRight(1)).forall {
+              case (t, n) => t == n || n == "+"
+            }
+
+          case _ =>
+
+            topicArr.length == nameArr.length &&
+              topicArr.zip(nameArr).forall {
+                case (t, n) => t == n || n == "+"
+              }
+        }
+      }.foreach(_ ! msg)
+
       stay()
 
     case Event(UnderlyingSubsAck(topic, fail), _) =>
@@ -194,6 +228,20 @@ class MqttPubSub(cfg: PSConfig) extends FSM[PSState, Unit] {
     val delay = cfg.connectDelay(connectCount)
     logger.info(s"delay $delay before reconnect")
     setTimer("reconnect", Connect, delay)
+  }
+
+  override def postStop(): Unit = {
+    super.postStop()
+    disconnectedCallback
+    client.disconnectForcibly()
+  }
+
+  def disconnectedCallback(): Unit = {
+    // empty -- subclasses can implement
+  }
+
+  def connectedCallback(): Unit = {
+    // empty -- subclasses can implement
   }
 
   initialize()
